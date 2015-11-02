@@ -10,6 +10,7 @@ struct material
 {
 	struct ag_color32* colors;
 	int color_count;
+	bool outline;
 };
 
 struct material* material__new()
@@ -17,6 +18,7 @@ struct material* material__new()
 	struct material* material = (struct material*)malloc(sizeof(struct material));
 	material->color_count = 0;
 	material->colors = 0;
+	material->outline = true;
 	return material;
 }
 
@@ -64,7 +66,21 @@ void terrain__update_surface(struct terrain* terrain, struct material** material
 		for(int x = 0; x < terrain->size.w; ++x)
 		{
 			struct material* material = materials[terrain->data[x+y*terrain->size.w]];
-			terrain->surface->data[x+y*terrain->size.w] = material->colors[garble(x+(y<<16))%material->color_count];
+			struct material *l, *u, *d, *r;
+			l = u = d = r = material;
+			if(x > 0)
+				l = materials[terrain->data[x-1+y*terrain->size.w]];
+			if(y > 0)
+				u = materials[terrain->data[x+(y-1)*terrain->size.w]];
+			if(x < terrain->size.w-1)
+				r = materials[terrain->data[x+1+y*terrain->size.w]];
+			if(y < terrain->size.h-1)
+				d = materials[terrain->data[x+(y+1)*terrain->size.w]];
+
+			if(!material->outline && (l->outline || u->outline || r->outline || d->outline))
+				terrain->surface->data[x+y*terrain->size.w] = agc_black;
+			else
+				terrain->surface->data[x+y*terrain->size.w] = material->colors[garble(x+(y<<16))%material->color_count];
 		}
 }
 
@@ -83,6 +99,8 @@ struct game* game__new(struct ag_vec2i size)
 	game->materials = (struct material**)malloc(sizeof(struct material*)*game->material_count);
 	game->materials[0] = material__new();
 	material__add_color(game->materials[0], ag_color32( 100,100,250, 0xff));
+	game->materials[0]->outline = false;
+
 	game->materials[1] = material__new();
 	material__add_color(game->materials[1], ag_color32( 80,  50, 10, 0xff));
 	material__add_color(game->materials[1], ag_color32(100,  70, 20, 0xff));
