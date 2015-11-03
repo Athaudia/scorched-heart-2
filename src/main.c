@@ -57,7 +57,7 @@ struct terrain* terrain__new(struct ag_vec2i size)
 	int max_steep = 128;
 	int steep_div = 16;
 	int h = size.h/2*steep_div;
-	struct ag_rng* rng = ag_rng__new(AG_RNG_XORSHIFT64, 5);
+	struct ag_rng* rng = ag_rng__new(AG_RNG_XORSHIFT64, 12);
 	for(int x = 0; x < size.w; ++x)
 	{
 		steep += (ag_rng__next_u32(rng)%3-1)*8;
@@ -85,9 +85,9 @@ struct terrain* terrain__new(struct ag_vec2i size)
 			terrain->data[x+y*size.w] = y>(size.h-h/steep_div)?1:0;
 	}
 	for(int y = 50; y < 200; ++y)
-		for(int x = 50; x < 200; ++x)
+		for(int x = 50; x < 600; ++x)
 			if(terrain->data[x+y*size.w] == 0)
-				terrain->data[x+y*size.w] = 2;
+				terrain->data[x+y*size.w] = rand()%1==0?0:0;
 	return terrain;
 }
 
@@ -141,28 +141,34 @@ void terrain__swap(struct terrain* terrain, struct ag_vec2i pos1, struct ag_vec2
 bool terrain__tick_physics(struct terrain* terrain)
 {
 	struct ag_vec2i pos;
-	//for(int iteration = 0; iteration < 4; ++iteration)
+	for(int iteration = 0; iteration < 2; ++iteration)
 	for(pos.y = terrain->size.h-1; pos.y >= 0; --pos.y)
 		for(pos.x = 0; pos.x < terrain->size.w; ++pos.x)
 		{
 			if(pos.y+1 < terrain->size.h && terrain__get(terrain, pos)->kind == MATERIAL_LIQUID)
 			{
-				struct ag_vec2i l, r;
+				struct ag_vec2i l, r, new_pos = pos;
 				bool go_l = true, go_r = true;
 				l = r = ag_vec2i(pos.x,pos.y+1);
+				if(terrain__get(terrain, ag_vec2i(pos.x,pos.y-1))->kind != MATERIAL_AIR && terrain__get(terrain, ag_vec2i(pos.x,pos.y+1))->kind != MATERIAL_AIR)
+					go_l = go_r = false;
+
 				while(go_l || go_r)
 				{
 					if(go_l && terrain__get(terrain, l)->kind == MATERIAL_AIR)
 					{
-						terrain__swap(terrain, pos, l);
-						goto done;
+						//terrain__swap(terrain, pos, l);
+						new_pos = l;
+						break;
 					}
 
 					if(go_r && terrain__get(terrain, r)->kind == MATERIAL_AIR)
 					{
-						terrain__swap(terrain, pos, r);
-						goto done;
+						//terrain__swap(terrain, pos, r);
+						new_pos = r;
+						break;
 					}
+
 
 					if(go_l)
 					{
@@ -190,10 +196,19 @@ bool terrain__tick_physics(struct terrain* terrain)
 						}
 					}
 				}
-				goto done;
+				if(pos.x != new_pos.x || pos.y != new_pos.y)
+				{
+					int dist = new_pos.x-pos.x;
+					if(dist < 0)
+						dist = -dist;
+					for(int i = 0; i < dist; ++dist)
+						if(new_pos.y+1 < terrain->size.h && terrain__get(terrain, ag_vec2i(new_pos.x, new_pos.y+1))->kind == MATERIAL_AIR)
+							++new_pos.y;
+						else
+							break;
+					terrain__swap(terrain, pos, new_pos);
+				}
 			}
-		done:
-			;
 		}
 	return true;
 }
@@ -203,6 +218,7 @@ struct game
 	struct terrain* terrain;
 	struct material** materials;
 	int material_count;
+	int tick;
 };
 
 struct game* game__new(struct ag_vec2i size)
@@ -227,7 +243,7 @@ struct game* game__new(struct ag_vec2i size)
 	game->materials[2]->kind = MATERIAL_LIQUID;
 
 	game->terrain->materials = game->materials;
-
+	game->tick = 0;
 	return game;
 }
 
@@ -260,7 +276,15 @@ void mystate_update(void* data, struct ag_window* window)
 			break;
 		}
 	}
+	int rain_amount = 0;
+	if(game->tick < 60*10)
+		rain_amount = game->tick;
+	else if(game->tick < 60*20)
+		rain_amount = 60*10-(game->tick-60*10);
+	for(int i = 0; i < rain_amount/10; ++i)
+		game->terrain->data[rand()%game->terrain->size.w+game->terrain->size.w] = 2;
 	terrain__tick_physics(game->terrain);
+	++game->tick;
 }
 
 void mystate_render(void* data, struct ag_window* window)
@@ -276,7 +300,7 @@ int main()
 {
 	ag_init();
 	struct ag_window* window = ag_window__new(ag_vec2i(640, 480), false);
-	ag_window__add_filter(window, AG_FILTER_UP2_NN);
+	ag_window__add_filter(window, AG_FILTER_UP2_SCALE2X);
 	struct ag_state* state = ag_state__new(window, 60, mystate_enter, mystate_render, mystate_update, 0);
 	ag_state__run(state);
 	ag_uninit();
