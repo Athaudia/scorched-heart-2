@@ -45,7 +45,13 @@ struct terrain
 	struct ag_vec2i size;
 	struct ag_surface32* surface;
 	struct material** materials;
+	struct ag_list* dirty_pixels;
 };
+
+void terrain__dirty(struct terrain* terrain, struct ag_vec2i pos)
+{
+	ag_list__push_back(terrain->dirty_pixels, ag_vec2i__new(pos.x, pos.y));
+}
 
 struct terrain* terrain__new(struct ag_vec2i size)
 {
@@ -53,6 +59,7 @@ struct terrain* terrain__new(struct ag_vec2i size)
 	terrain->size = size;
 	terrain->surface = ag_surface32__new(size);
 	terrain->data = (uint16_t*)malloc(sizeof(uint16_t) * size.w*size.h);
+	terrain->dirty_pixels = ag_list__new();
 	int steep = 0;
 	int max_steep = 128;
 	int steep_div = 16;
@@ -95,15 +102,33 @@ void terrain__destroy(struct terrain* terrain)
 {
 	ag_surface32__destroy(terrain->surface);
 	free(terrain->data);
+	free(terrain->dirty_pixels);
 	free(terrain);
 }
 
 void terrain__update_surface(struct terrain* terrain)
 {
 	struct material** materials = terrain->materials;
-	for(int y = 0; y < terrain->size.h; ++y)
-		for(int x = 0; x < terrain->size.w; ++x)
+	//for(int y = 0; y < terrain->size.h; ++y)
+	//	for(int x = 0; x < terrain->size.w; ++x)
+	while(terrain->dirty_pixels->front)
+	{
+		//printf("1\n");
+		struct ag_vec2i* dirty = ag_list__pop_front(terrain->dirty_pixels);
+		//printf("2\n");
+		int startx = dirty->x-1, stopx = dirty->x+1, starty = dirty->y-1, stopy = dirty->y+1;
+		//printf("3 %d\n", (int)dirty);
+		ag_vec2i__destroy(dirty);
+		//printf("4\n");
+		if(startx < 0) startx = 0;
+		if(starty < 0) starty = 0;
+		if(stopx >= terrain->size.w) stopx = terrain->size.w-1;
+		if(stopy >= terrain->size.h) stopy = terrain->size.h-1;
+		//printf("startx: %d, stopx: %d, starty: %d, stopy: %d\n", startx, stopx, starty, stopy);
+		for(int x = startx; x <= stopx; ++x)
+		for(int y = starty; y <= stopy; ++y)
 		{
+			//printf(".\n");
 			struct material* material = materials[terrain->data[x+y*terrain->size.w]];
 			struct material *l, *u, *d, *r;
 			l = u = d = r = material;
@@ -120,7 +145,9 @@ void terrain__update_surface(struct terrain* terrain)
 				terrain->surface->data[x+y*terrain->size.w] = agc_black;
 			else
 				terrain->surface->data[x+y*terrain->size.w] = material->colors[garble(x+(y<<16))%material->color_count];
+			//printf("-\n");
 		}
+	}
 }
 
 struct material* terrain__get(struct terrain* terrain, struct ag_vec2i pos)
@@ -136,6 +163,8 @@ void terrain__swap(struct terrain* terrain, struct ag_vec2i pos1, struct ag_vec2
 	uint16_t m = terrain->data[pos1.x+pos1.y*terrain->size.w];
 	terrain->data[pos1.x+pos1.y*terrain->size.w] = terrain->data[pos2.x+pos2.y*terrain->size.w];
 	terrain->data[pos2.x+pos2.y*terrain->size.w] = m;
+	terrain__dirty(terrain, pos1);
+	terrain__dirty(terrain, pos2);
 }
 
 bool terrain__tick_physics(struct terrain* terrain)
@@ -258,7 +287,7 @@ void game__destroy(struct game* game)
 
 void* mystate_enter()
 {
-	return game__new(ag_vec2i(640, 480));
+	return game__new(ag_vec2i(1920/2, 1080/2));
 }
 
 void mystate_update(void* data, struct ag_window* window)
@@ -283,6 +312,13 @@ void mystate_update(void* data, struct ag_window* window)
 		rain_amount = 60*10-(game->tick-60*10);
 	for(int i = 0; i < rain_amount/10; ++i)
 		game->terrain->data[rand()%game->terrain->size.w+game->terrain->size.w] = 2;
+	if(game->tick == 0)
+	{
+		for(int y = 1; y < game->terrain->size.h-1; y+=3)
+			for(int x = 1; x < game->terrain->size.w-1; x+=3)
+				terrain__dirty(game->terrain, ag_vec2i(x,y));
+	
+	}
 	terrain__tick_physics(game->terrain);
 	++game->tick;
 }
@@ -292,7 +328,8 @@ void mystate_render(void* data, struct ag_window* window)
 	struct game* game = (struct game*) data;
 	ag_surface32__clear(window->surface, agc_black);
 	terrain__update_surface(game->terrain);
-	ag_surface32__blit_to(window->surface, game->terrain->surface, ag_vec2i(0,0));
+	//ag_surface32__blit_to(window->surface, game->terrain->surface, ag_vec2i(0,0));
+	ag_surface32__blit_partial_to(window->surface, game->terrain->surface, ag_vec2i(0,0), ag_vec2i(0,0), window->surface->size);
 }
 
 
