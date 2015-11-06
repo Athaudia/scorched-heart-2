@@ -1,5 +1,7 @@
 : foreach ../src/*.c |> x86_64-w64-mingw32-clang -c -DPLATFORM_WIN32 -std=gnu99 -O3 %f -Werror -Wall -I../include -I../../athgame/include -o %o |> build/%B_release.o
+: foreach ../src/*.c |> x86_64-w64-mingw32-clang -c -DPLATFORM_WIN32 -std=gnu99 -O3 -gdwarf-2 -fno-omit-frame-pointer %f -Werror -Wall -I../include -I../../athgame/include -o %o |> build/%B_prof.o
 : foreach ../src/*.c |> x86_64-w64-mingw32-clang -c -DPLATFORM_WIN32 -std=gnu99 -O0 -g %f -Werror -Wall -I../include -I../../athgame/include -o %o |> build/%B_debug.o
-: build/*_release.o | libathgame.a |> x86_64-w64-mingw32-clang %f -static -L. -lathgame -lm -lws2_32 -lwinmm -lgdi32 -o %o|> ScorchedHeart2.exe
-: build/*_debug.o | libathgame.a |> x86_64-w64-mingw32-clang %f -static -L. -g -lathgame_dbg -lm -lws2_32 -lwinmm -lgdi32 -o %o|> ScorchedHeart2DBG.exe
+: build/*_release.o | libathgame.a      |> x86_64-w64-mingw32-clang %f -static -L. -lathgame -lm -lws2_32 -lwinmm -lgdi32 -o %o|> ScorchedHeart2.exe
+: build/*_prof.o    | libathgame_prof.a |> x86_64-w64-mingw32-clang %f -static -L. -gdwarf-2 -fno-omit-frame-pointer -lathgame_prof -lm -lws2_32 -lwinmm -lgdi32 -o %o|> ScorchedHeart2PROF.exe
+: build/*_debug.o   | libathgame_dbg.a  |> x86_64-w64-mingw32-clang %f -static -L. -g -lathgame_dbg -lm -lws2_32 -lwinmm -lgdi32 -o %o|> ScorchedHeart2DBG.exe
 
